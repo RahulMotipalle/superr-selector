@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pressure Situation Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: scenario chips, a match-state builder with a live readout (win probability, pressure), then two ranked panels: batters | bowlers. */
+:root{
+  --bg:#f4f6f5; --panel:#ffffff; --ink:#14201c; --muted:#5b6b66; --line:#dbe3e0;
+  --accent:#0d6e5a; --accent-soft:#e1f1ec; --pos:#1b7f4a; --neg:#b4452f; --chip:#eef2f1; --warn:#b26a00;
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --panel:#161e1b; --ink:#e6eeeb; --muted:#93a39d; --line:#2a3632;
+  --accent:#4cc3a3; --accent-soft:#183129; --pos:#5fcf8d; --neg:#ec8b74; --chip:#1f2a26; --warn:#f0b056; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --panel:#161e1b; --ink:#e6eeeb; --muted:#93a39d; --line:#2a3632;
+  --accent:#4cc3a3; --accent-soft:#183129; --pos:#5fcf8d; --neg:#ec8b74; --chip:#1f2a26; --warn:#f0b056; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 18px 40px;display:grid;gap:18px}
+h1{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);max-width:75ch;margin:4px 0 0}
+.scen{display:flex;flex-wrap:wrap;gap:8px}
+.scen button{font:500 13px var(--body);border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:999px;cursor:pointer}
+.scen button:hover{border-color:var(--accent)}
+.scen button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.builder{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:22px}
+@media (max-width:820px){.builder{grid-template-columns:1fr}}
+.inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;align-content:start}
+.f{display:grid;gap:4px}
+.f.wide{grid-column:1/-1}
+.f > span,.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+select,input[type=number]{font:15px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%;font-variant-numeric:tabular-nums}
+.tg{display:flex;flex-wrap:wrap;gap:4px}
+.tg button{font:500 13px var(--body);border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:6px 11px;border-radius:7px;cursor:pointer}
+.tg button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.readout{display:grid;gap:12px;align-content:start;border-left:1px solid var(--line);padding-left:22px}
+@media (max-width:820px){.readout{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:14px}}
+.headline{font-family:var(--display);font-size:22px;font-weight:600;line-height:1.2}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat .n{font-family:var(--display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .s{font-size:12px;color:var(--muted)}
+.wpbar{height:10px;border-radius:5px;background:var(--chip);overflow:hidden;display:flex}
+.wpbar i{display:block;height:100%;background:var(--accent)}
+.wplab{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:3px}
+.press{display:inline-block;font-weight:700;padding:2px 8px;border-radius:6px;font-size:13px}
+.press.low{background:var(--chip);color:var(--muted)} .press.normal{background:var(--accent-soft);color:var(--accent)}
+.press.high{background:#fbe8d0;color:#8a4b00} .press.extreme{background:#f6d5cd;color:#9a2f1a}
+@media (prefers-color-scheme: dark){.press.high{background:#3a2a12;color:#f0b056}.press.extreme{background:#3d1d16;color:#ec8b74}}
+.matched{font-size:12.5px;color:var(--muted)}
+.global{display:flex;flex-wrap:wrap;gap:18px;align-items:center;color:var(--muted);font-size:13px}
+.global label{display:flex;gap:8px;align-items:center}
+.global output{font-variant-numeric:tabular-nums;color:var(--ink);min-width:2.5em}
+.global select{width:auto;font-size:13px;padding:5px 8px}
+.panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px}
+.panel{display:grid;gap:12px;align-content:start}
+.panel h2{font-family:var(--display);font-size:19px;font-weight:600;margin:0}
+.panel .desc{color:var(--muted);font-size:13px;margin:-6px 0 0}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:right;font-weight:600;padding:4px 6px;border-bottom:1px solid var(--line)}
+th:nth-child(1),th:nth-child(2){text-align:left}
+td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle}
+td.nm{text-align:left} td.rk{text-align:left;color:var(--muted);width:24px}
+.name{font-weight:600}
+.meta{font-size:12px;color:var(--muted)}
+.chip{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--chip);color:var(--muted);margin-left:4px}
+.chip.ovr{background:var(--accent-soft);color:var(--accent)}
+.bar{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.bar i{display:block;height:8px;border-radius:2px}
+.v{min-width:3.2em;font-weight:600}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+.conf{display:inline-flex;gap:2px;vertical-align:middle;margin-left:4px}
+.conf b{width:4px;height:10px;border-radius:1px;background:var(--line)}
+.conf b.on{background:var(--muted)}
+.empty{color:var(--muted);padding:14px 4px}
+.note{color:var(--muted);font-size:12.5px;max-width:100ch}
+.warn{color:var(--warn);font-size:13px}
+.scroll{overflow-x:auto}
+@media (prefers-reduced-motion:no-preference){.scen button,.tg button{transition:background .15s,border-color .15s}.wpbar i{transition:width .25s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Pressure Situation Simulator</h1>
+    <p class="sub">Set up any match situation. The simulator works out the win probability and how much pressure the moment carries, then ranks the batters and bowlers who have performed best in situations like it (IPL and T20Is, 2022–26).</p>
+  </header>
+
+  <div class="scen" id="scen" role="group" aria-label="Example situations"></div>
+
+  <section class="card builder" aria-label="Match situation">
+    <div class="inputs">
+      <div class="f wide"><span>Innings</span><div class="tg" id="inn"></div></div>
+      <label class="f" for="ov"><span>Overs completed</span><select id="ov"></select></label>
+      <label class="f" for="bl"><span>Balls into over</span><select id="bl"></select></label>
+      <label class="f" for="sc"><span>Score</span><input type="number" id="sc" min="0" max="300" step="1" inputmode="numeric"></label>
+      <label class="f" for="wk"><span>Wickets down</span><select id="wk"></select></label>
+      <label class="f" for="tg" id="tgWrap"><span>Target</span><input type="number" id="tg" min="1" max="320" step="1" inputmode="numeric"></label>
+    </div>
+    <div class="readout" aria-live="polite">
+      <div class="headline" id="headline"></div>
+      <div>
+        <div class="wpbar" aria-hidden="true"><i id="wpfill"></i></div>
+        <div class="wplab"><span id="wpL"></span><span id="wpR"></span></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="sWP"></div><div class="s">Batting side win chance</div></div>
+        <div class="stat"><div class="n" id="sLI"></div><div class="s">Stakes vs average ball</div></div>
+        <div class="stat"><div class="n" id="sRR"></div><div class="s" id="sRRl"></div></div>
+      </div>
+      <div>Pressure: <span class="press" id="pBadge"></span></div>
+      <div class="matched" id="matched"></div>
+      <div class="warn" id="warn"></div>
+    </div>
+  </section>
+
+  <div class="global">
+    <label for="minb">Min. balls in similar situations <input type="range" id="minb" min="10" max="150" step="10" value="30"><output id="minbOut">30</output></label>
+    <label for="active"><input type="checkbox" id="active" checked> Played in 2025–26 only</label>
+    <label for="comp">Matches <select id="comp"><option value="all">IPL + T20Is (top sides weighted up)</option><option value="1">IPL only</option></select></label>
+  </div>
+
+  <div class="panels">
+    <section class="card panel" aria-labelledby="hBat">
+      <h2 id="hBat">Best batters for this situation</h2>
+      <p class="desc" id="dBat"></p>
+      <div class="f"><span>Facing</span><div class="tg" id="mBat"></div></div>
+      <div class="scroll"><table><thead><tr><th>#</th><th>Batter</th><th>Value</th><th>Balls</th><th>SR</th><th>Outs</th></tr></thead><tbody id="tBat"></tbody></table></div>
+    </section>
+    <section class="card panel" aria-labelledby="hBowl">
+      <h2 id="hBowl">Best bowlers for this situation</h2>
+      <p class="desc" id="dBowl"></p>
+      <div class="f"><span>Bowling to</span><div class="tg" id="mBowl"></div></div>
+      <div class="scroll"><table><thead><tr><th>#</th><th>Bowler</th><th>Value</th><th>Balls</th><th>Econ</th><th>Wkts</th></tr></thead><tbody id="tBowl"></tbody></table></div>
+    </section>
+  </div>
+
+  <p class="note"><b>How it works.</b> The match state is placed in a band of overs (1–6, 7–11, 12–15, 16–18, 19–20), wickets down (0–1, 2–3, 4–5, 6+) and scoring demand (the current run rate when batting first, the required rate when chasing). Each player's balls in that exact band count in full, and balls in a neighbouring band count at 35%. <b>Value</b> is runs gained (batters) or saved (bowlers) per 100 balls compared with an average player in the same spot, after adjusting for the opposition, venue and season. Wickets count at their run cost in that match state. Recent seasons count more, IPL balls count fully, and T20Is count at 50% against top sides and 25% against others. Where a player has only a few similar balls, his value is blended with his overall pressure form, so a lucky handful can't top the list. Bars show how much evidence sits behind each value. <span class="chip ovr">#4</span> marks a place in our overall top-10 pressure rankings. Win probability and stakes come from the same model used for the rankings.</p>
+</div>
+
+<script>
+const OB=["overs 1–6","overs 7–11","overs 12–15","overs 16–18","overs 19–20"];
+const WB=["0–1 down","2–3 down","4–5 down","6+ down"];
+const DB1=["run rate under 7","run rate 7–8.5","run rate 8.5–10","run rate 10–11.5","run rate 11.5+"];
+const DB2=["required rate under 7.5","required rate 7.5–9","required rate 9–10.5","required rate 10.5–12.5","required rate 12.5+"];
+const BT=[["any","Any"],["P","Pace"],["W","Wrist spin"],["F","Finger spin"]];
+const HD=[["any","Any"],["L","Left-handers"],["R","Right-handers"]];
+const SCEN=[
+ {l:"Chase: 60 off 30, 4 down",inn:2,ov:15,bl:0,sc:121,wk:4,tg:181},
+ {l:"Tight finish: 18 off 12, 6 down",inn:2,ov:18,bl:0,sc:153,wk:6,tg:171},
+ {l:"Defend 12 off the last over",inn:2,ov:19,bl:0,sc:158,wk:6,tg:170},
+ {l:"Steep chase: 100 off 48",inn:2,ov:12,bl:0,sc:101,wk:3,tg:201},
+ {l:"Chasing 200 from ball one",inn:2,ov:0,bl:0,sc:0,wk:0,tg:201},
+ {l:"Powerplay wobble: 30/3 after 5",inn:1,ov:5,bl:0,sc:30,wk:3},
+ {l:"Rebuild: 70/4 after 10",inn:1,ov:10,bl:0,sc:70,wk:4},
+ {l:"Death launch: 150/4 after 16",inn:1,ov:16,bl:0,sc:150,wk:4}
+];
+const K=60, ADJ=0.35;
+let D=null, S={inn:2,ov:15,bl:0,sc:121,wk:4,tg:181}, mBat="any", mBowl="any";
+const $=id=>document.getElementById(id);
+function toggles(el,opts,get,set){el.innerHTML="";for(const [v,l] of opts){const b=document.createElement("button");b.type="button";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);paint(el,v);render();};el.appendChild(b);}paint(el,get());}
+function paint(el,v){el.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v==String(v))));}
+function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+function state(){
+  const lb=S.ov*6+S.bl, balls=120-lb, over=S.ov+1;
+  const ob=over<=6?0:over<=11?1:over<=15?2:over<=18?3:4;
+  const wb=S.wk<=1?0:S.wk<=3?1:S.wk<=5?2:3;
+  let db, rate, need=null;
+  if(S.inn===1){rate=lb>=6?6*S.sc/lb:null;const r=rate??8;db=r<7?0:r<8.5?1:r<10?2:r<11.5?3:4;}
+  else{need=S.tg-S.sc;rate=6*need/Math.max(balls,1);db=rate<7.5?0:rate<9?1:rate<10.5?2:rate<12.5?3:4;}
+  return {lb,balls,ob,wb,db,rate,need};
+}
+function look(k,st){
+  const g=D.grid, i=clamp(Math.floor(st.lb/6),0,g.lb.length-1);
+  const v=S.inn===1?S.sc:st.need, s=clamp(Math.round(v/4),0,g.sc.length-1);
+  return D.look[S.inn][k][(i*g.wk.length+S.wk)*g.sc.length+s];
+}
+const LEVELS=[[ADJ,0],[0.6,0.15],[0.85,0.4]];
+function sim(a,b,L){const d=Math.abs(a-b);return d===0?1:d===1?L[0]:d===2?L[1]:0;}
+function rank(kind,st,L){
+  const T=D[kind], c=T.cols, ix=Object.fromEntries(c.map((x,i)=>[x,i]));
+  const people=kind==="bat"?D.batters:D.bowlers, match=kind==="bat"?mBat:mBowl;
+  const comp=$("comp").value, active=$("active").checked, minb=+$("minb").value;
+  const acc=new Map();
+  for(const r of T.rows){
+    if(r[ix.inn]!==S.inn)continue;
+    if(match!=="any"&&r[ix.mu]!==match)continue;
+    if(comp!=="all"&&String(r[ix.comp])!==comp)continue;
+    const w=sim(r[ix.ob],st.ob,L)*sim(r[ix.wb],st.wb,L)*sim(r[ix.db],st.db,L); if(!w)continue;
+    let a=acc.get(r[0]); if(!a){a={n:0,W:0,S:0,R:0,O:0,ex:0};acc.set(r[0],a);}
+    a.n+=w*r[ix.n]; a.W+=w*r[ix.W]; a.S+=w*r[ix.S]; a.R+=w*r[ix.R]; a.O+=w*r[kind==="bat"?ix.O:ix.K];
+    if(w===1)a.ex+=r[ix.n];
+  }
+  const out=[];
+  for(const [id,a] of acc){
+    const p=people[id]; if(!p)continue;
+    if(active&&p.y<2025)continue;
+    if(a.n<minb)continue;
+    const est=100*(a.S+K*p.pr)/(a.W+K);
+    out.push({id,p,a,est});
+  }
+  out.sort((x,y)=>y.est-x.est);
+  return out;
+}
+function conf(n){const lv=n>=300?4:n>=150?3:n>=60?2:1;return `<span class="conf" title="${Math.round(n)} similar balls">${[1,2,3,4].map(i=>`<b class="${i<=lv?'on':''}"></b>`).join("")}</span>`;}
+function table(el,list,kind){
+  if(!list.length){el.innerHTML=`<tr><td colspan="6" class="empty">No player has enough balls in situations like this. Lower the minimum or widen the filters.</td></tr>`;return;}
+  const top=list.slice(0,10), mx=Math.max(...top.map(x=>Math.abs(x.est)),1);
+  const TY={P:"Pace",W:"Wrist spin",F:"Finger spin"};
+  el.innerHTML=top.map((x,i)=>{
+    const p=x.p,a=x.a,v=x.est,col=v>=0?"var(--pos)":"var(--neg)";
+    const chips=(kind==="bat"?`<span class="chip">${p.h==="L"?"LHB":"RHB"}</span>`:`<span class="chip">${TY[p.ty]||""}</span>`)+(p.rk&&p.rk<=10?`<span class="chip ovr" title="Overall pressure ranking">#${p.rk}</span>`:"");
+    const r2=kind==="bat"?(a.n?(100*a.R/a.n).toFixed(0):"–"):(a.n?(6*a.R/a.n).toFixed(1):"–");
+    return `<tr><td class="rk">${i+1}</td><td class="nm"><div class="name">${p.n}${chips}</div><div class="meta">${p.t||""}${p.t?" · ":""}last played ${p.y}</div></td>
+      <td><div class="bar"><i style="width:${Math.round(46*Math.abs(v)/mx)}px;background:${col}"></i><span class="v ${v>=0?"pos":"neg"}">${v>=0?"+":""}${v.toFixed(1)}</span></div></td>
+      <td>${Math.round(a.n)}${conf(a.n)}</td><td>${r2}</td><td>${a.O.toFixed(0)}</td></tr>`;}).join("");
+}
+function readInputs(){
+  S.ov=+$("ov").value; S.bl=+$("bl").value; S.wk=+$("wk").value;
+  S.sc=clamp(Math.round(+$("sc").value||0),0,300); S.tg=clamp(Math.round(+$("tg").value||1),1,320);
+}
+function render(){
+  const st=state(); $("tgWrap").style.display=S.inn===2?"":"none";
+  let warn="";
+  if(S.inn===2&&st.need<=0)warn="The target has already been reached. Lower the score or raise the target.";
+  $("warn").textContent=warn;
+  const ovTxt=`${S.ov}${S.bl?"."+S.bl:""} overs`;
+  if(S.inn===2){$("headline").textContent=st.need>0?`Need ${st.need} off ${st.balls} balls, ${10-S.wk} wickets left`:`Target reached`;}
+  else{$("headline").textContent=`${S.sc}/${S.wk} after ${ovTxt}, batting first`;}
+  const wp=st.need!==null&&st.need<=0?100:look("wp",st), li=st.need!==null&&st.need<=0?0:look("li",st)/100;
+  $("sWP").textContent=wp+"%"; $("wpfill").style.width=wp+"%";
+  $("wpL").textContent=S.inn===2?"Chasing side":"Batting side"; $("wpR").textContent=S.inn===2?"Defending side":"Bowling side";
+  $("sLI").textContent=li>=5.95?"6×+":li.toFixed(1)+"×";
+  if(S.inn===2){$("sRR").textContent=st.need>0?st.rate.toFixed(1):"–";$("sRRl").textContent="Required run rate";}
+  else{$("sRR").textContent=st.rate===null?"–":st.rate.toFixed(1);$("sRRl").textContent="Current run rate";}
+  const band=li<0.75?"low":li<1.5?"normal":li<2.5?"high":"extreme";
+  const pb=$("pBadge"); pb.className="press "+band; pb.textContent={low:"Low",normal:"Normal",high:"High",extreme:"Extreme"}[band];
+  $("matched").textContent=`Compared on: innings ${S.inn}, ${OB[st.ob]}, ${WB[st.wb]}, ${(S.inn===1?DB1:DB2)[st.db]}, plus neighbouring bands at reduced weight.`;
+  $("dBat").textContent=S.inn===2?"Who you want at the crease for this chase.":"Who you want at the crease setting the total from here.";
+  $("dBowl").textContent=S.inn===2?"Who you want bowling to defend this total.":"Who you want bowling to keep this innings in check.";
+  if(warn){$("tBat").innerHTML=$("tBowl").innerHTML=`<tr><td colspan="6" class="empty">Set a valid situation to see rankings.</td></tr>`;return;}
+  for(const [k,t,d,base] of [["bat","tBat","dBat",$("dBat").textContent],["bowl","tBowl","dBowl",$("dBowl").textContent]]){
+    let list=[],lv=0; for(;lv<LEVELS.length;lv++){list=rank(k,st,LEVELS[lv]);if(list.length>=5)break;}
+    if(lv>=LEVELS.length)lv=LEVELS.length-1;
+    $(d).textContent=base+(lv>0?" This situation is rare in the data, so nearby situations count more here.":"");
+    table($(t),list,k);
+  }
+}
+function setInputs(){ $("ov").value=S.ov;$("bl").value=S.bl;$("sc").value=S.sc;$("wk").value=S.wk;$("tg").value=S.tg||181;paint($("inn"),S.inn); }
+function applyScen(s,btn){Object.assign(S,{tg:S.tg},s);setInputs();document.querySelectorAll("#scen button").forEach(b=>b.setAttribute("aria-pressed",String(b===btn)));render();}
+function clearScen(){document.querySelectorAll("#scen button").forEach(b=>b.setAttribute("aria-pressed","false"));}
+async function init(){
+  $("ov").innerHTML=Array.from({length:20},(_,i)=>`<option value="${i}">${i}</option>`).join("");
+  $("bl").innerHTML=Array.from({length:6},(_,i)=>`<option value="${i}">${i}</option>`).join("");
+  $("wk").innerHTML=Array.from({length:10},(_,i)=>`<option value="${i}">${i}</option>`).join("");
+  toggles($("inn"),[[1,"Batting first"],[2,"Chasing"]],()=>S.inn,v=>{S.inn=+v;clearScen();});
+  toggles($("mBat"),BT,()=>mBat,v=>{mBat=v;}); toggles($("mBowl"),HD,()=>mBowl,v=>{mBowl=v;});
+  const sc=$("scen"); for(const s of SCEN){const b=document.createElement("button");b.type="button";b.textContent=s.l;b.onclick=()=>applyScen(s,b);sc.appendChild(b);}
+  for(const id of ["ov","bl","wk","sc","tg"]) $(id).addEventListener("input",()=>{readInputs();clearScen();render();});
+  for(const id of ["comp","active"]) $(id).addEventListener("change",render);
+  $("minb").addEventListener("input",e=>{$("minbOut").textContent=e.target.value;render();});
+  $("headline").textContent="Loading data…";
+  try{D=await (await fetch("data.json")).json();}catch(e){$("headline").textContent="Couldn't load the data. Try refreshing the page.";return;}
+  applyScen(SCEN[0],sc.querySelector("button"));
+}
+init();
+</script>
+</body>
+</html>
